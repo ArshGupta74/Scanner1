@@ -518,89 +518,6 @@ const Overview = () => {
         setIsLoading(false);
       }
     }
-    // else if (scanOption === 'dynamic') {
-    //   try {
-    //     setIsLoading(true);
-    //     console.log('Sending request to /splunk-search');
-    //     const scanResponse = await fetch('http://localhost:3000/splunk-search',{
-    //       method: 'POST',
-    //       headers: {
-    //         'Content-Type': 'application/json',
-    //       },
-    //       body: JSON.stringify({
-    //         index: indexing,
-    //         fieldRegexPairs: Object.fromEntries(keyValuePairs.map(pair => [pair.key, pair.value]))
-    //       }),
-    //     });
-
-    //     if (!scanResponse.ok) {
-    //       throw new Error('Failed to fetch dynamic log stats or scan data');
-    //     }
-
-    //     const scanData = await scanResponse.json();
-    //     setScanData(scanData);
-
-    //     const processedResults = {};
-    //     let totalPIICount = 0;
-
-    //     // scanData.results.forEach(result => {
-    //     //   const filePath = result.filePath || result.source;
-    //     //   if (!processedResults[filePath]) {
-    //     //     processedResults[filePath] = 0;
-    //     //   }
-          
-    //     //   const piiCount = Object.keys(result).filter(key => 
-    //     //     key !== 'filePath' && key !== 'source' && result[key]
-    //     //   ).length;
-          
-    //     //   processedResults[filePath] += piiCount;
-    //     //   totalPIICount += piiCount;
-
-    //     //   const vulnerabilities = scanData.vulnerabilities;
-    //     // const vulnerabilityLabels = Object.keys(vulnerabilities);
-    //     // const vulnerabilityCounts = Object.values(vulnerabilities).map(v => v.length);
-    //     // const colors = generateColors(vulnerabilityLabels.length);
-
-    //   //   setVulnerabilityChartData({
-    //   //     labels: vulnerabilityLabels,
-    //   //     datasets: [{
-    //   //       data: vulnerabilityCounts,
-    //   //       backgroundColor: colors,
-    //   //       hoverBackgroundColor: colors
-    //   //     }]
-    //   //   });
-    //   // });
-
-    //     // setResults(processedResults);
-    //     // setTotalPII(totalPIICount);
-    //     // setNumFiles(Object.keys(processedResults).length);
-
-    //                                       // Update chart data
-    //                                 //       const chartLabels = Object.keys(processedResults);
-    //                                 //       const chartDataValues = Object.values(processedResults);
-    //                                 //       const colors = generateColors(chartLabels.length);
-
-    //                                 //       setStatsData({
-    //                                 //         totalPII: totalPIICount,
-    //                                 //         numFiles: Object.keys(processedResults).length,
-    //                                 //         results: processedResults,
-    //                                 //         chartData: {
-    //                                 //           labels: chartLabels,
-    //                                 //           datasets: [{
-    //                                 //             data: chartDataValues,
-    //                                 //             backgroundColor: colors,
-    //                                 //             hoverBackgroundColor: colors
-    //                                 //           }]
-    //                                 //         }
-    //                                 //       });
-
-    //   } catch (error) {
-    //     console.error('Error during dynamic log scan:', error);
-    //     setError(error.message);
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // }
   }
 
   const InfoButton = ({ pii }) => {
@@ -983,134 +900,117 @@ const Overview = () => {
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-8 w-[95%] mx-auto" style={{ height: '500px' }}>
-          <Suspense fallback={<Loading />}>
-            {isLoading ? (
-              <Loading />
-            ) : (
-              <>
-                <div className="bg-[#2C2D2F] rounded-lg p-6 w-[65%] scrollable scrollbar-thin flex flex-col" style={{ minHeight: '500px' }}>
-                  {/* <h2 className="text-xl mb-4 text-gray-300">Results</h2>
-            <p className="mb-2">Number of Files with PIIs found - {numFiles}</p> */}
-                  <h2 className="text-xl mb-4 text-gray-300">
-                    {scanOption === 'dynamic' ? 'Log Analysis Results' : 'Results'}
-                  </h2>
-                  {/* <h2 className="text-xl mb-4 text-gray-300">Log Analysis Results</h2> */}
-                  {/* <p className="mb-2">
-                    {scanOption === 'dynamic'
-                      ? `Total Lines Analyzed: ${numFiles}`
-                      : `Number of Files with PIIs found - ${numFiles}`}
-                  </p> */}
-                  <div className="flex-grow overflow-x-auto scrollbar-thin">
-                    <table className="min-w-full bg-[#2C2D2F] border-collapse border-gray-600 shadow-md rounded-lg overflow-hidden">
-                      <thead className="bg-[#2C2D2F] text-gray-300">
-                        <tr>
-                          <th className="py-2 px-4 border-b border-gray-600 text-left w-3/4">File path</th>
-                          <th className="py-2 px-4 border-b border-gray-600 text-right w-1/4">No. of PIIs found</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-gray-400">
-                        {Object.entries(results).map(([filePath, piiData]) => {
-                          let piiCount;
-                          if (scanOption === 'dynamic') {
-                            // For dynamic scans, piiData is the direct count of vulnerabilities
-                            piiCount = piiData;
-                          } else {
-                            // For other scan types, keep the existing logic
-                            piiCount = typeof piiData === 'number' ? piiData :
-                              (Array.isArray(piiData) ? piiData.length :
-                                (typeof piiData === 'object' ? Object.values(piiData).flat().length : 0));
-                          }
+        <div className="w-[95%] mx-auto" style={{ height: '500px' }}>
+      <Suspense fallback={<Loading />}>
+        {isLoading ? (
+          <Loading />
+        ) : (
+          <div className={`flex ${scanOption === 'dynamic' ? 'flex-col' : 'flex-col md:flex-row'} gap-8`}>
+            <div 
+              className={`bg-[#2C2D2F] rounded-lg p-6 ${
+                scanOption === 'dynamic' ? 'w-full' : 'w-full md:w-[65%]'
+              } scrollable scrollbar-thin flex flex-col`} 
+              style={{ minHeight: '500px' }}
+            >
+              <h2 className="text-xl mb-4 text-gray-300">
+                {scanOption === 'dynamic' ? 'Log Analysis Results' : 'Results'}
+              </h2>
+              <div className="flex-grow overflow-x-auto scrollbar-thin">
+                <table className="min-w-full bg-[#2C2D2F] border-collapse border-gray-600 shadow-md rounded-lg overflow-hidden">
+                  <thead className="bg-[#2C2D2F] text-gray-300">
+                    <tr>
+                      <th className="py-2 px-4 border-b border-gray-600 text-left w-3/4">File path</th>
+                      <th className="py-2 px-4 border-b border-gray-600 text-right w-1/4">No. of PIIs found</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-gray-400">
+                    {Object.entries(results).map(([filePath, piiData]) => {
+                      let piiCount = scanOption === 'dynamic' ? piiData :
+                        (typeof piiData === 'number' ? piiData :
+                          (Array.isArray(piiData) ? piiData.length :
+                            (typeof piiData === 'object' ? Object.values(piiData).flat().length : 0)));
 
-                          return (
-                            <tr key={filePath}>
-                              <td className="py-2 px-4 border-b border-gray-600 text-left">{filePath}</td>
-                              <td className="py-2 px-4 border-b border-gray-600 text-right">{piiCount}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      className="bg-[#a4ff9e] hover:bg-black hover:text-[#a4ff9e] hover:font-bold font-bold text-[#000000] py-2 px-4 rounded transition duration-300"
-                      onClick={handleGenerateReport}
-                    >
-                      Generate Report
-                    </button>
-                  </div>
-                </div>
-                <div className="bg-[#2C2D2F] rounded-lg p-6 w-[35%] scrollable scrollbar-thin flex flex-col" style={{ minHeight: '500px' }}>
-                  {/* <h2 className="text-xl mb-4 text-gray-300">Repository Info</h2> */}
-                  <h2 className="text-xl mb-4 text-gray-300">
-                    {scanOption === 'dynamic' ? 'Log Statistics' : 'Repository Info'}
-                  </h2>
-                  <div className="flex flex-grow flex-col">
-                    {Object.values(repoInfo).some(value => value !== 0) ? (
-                      <>
-                        <div className="mb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                          <div className="grid grid-cols-5 gap-2 ">
-                            {Object.entries(repoInfo)
-                              .sort(([, a], [, b]) => b - a)
-                              .map(([lang, value]) => (
-                                <p key={lang} className="mb-2 text-sm">
-                                  {lang}: {typeof value === 'number' ? `${value.toFixed(2)}%` : value}
-                                </p>
-                              ))}
-                          </div>
+                      return (
+                        <tr key={filePath}>
+                          <td className="py-2 px-4 border-b border-gray-600 text-left">{filePath}</td>
+                          <td className="py-2 px-4 border-b border-gray-600 text-right">{piiCount}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  className="bg-[#a4ff9e] hover:bg-black hover:text-[#a4ff9e] hover:font-bold font-bold text-[#000000] py-2 px-4 rounded transition duration-300"
+                  onClick={handleGenerateReport}
+                >
+                  Generate Report
+                </button>
+              </div>
+            </div>
+            {scanOption !== 'dynamic' && (
+              <div className="bg-[#2C2D2F] rounded-lg p-6 w-full md:w-[35%] scrollable scrollbar-thin flex flex-col" style={{ minHeight: '500px' }}>
+                <h2 className="text-xl mb-4 text-gray-300">Repository Info</h2>
+                <div className="flex flex-grow flex-col">
+                  {Object.values(repoInfo).some(value => value !== 0) ? (
+                    <>
+                      <div className="mb-4 max-h-64 overflow-y-auto scrollbar-thin">
+                        <div className="grid grid-cols-5 gap-2 ">
+                          {Object.entries(repoInfo)
+                            .sort(([, a], [, b]) => b - a)
+                            .map(([lang, value]) => (
+                              <p key={lang} className="mb-2 text-sm">
+                                {lang}: {typeof value === 'number' ? `${value.toFixed(2)}%` : value}
+                              </p>
+                            ))}
                         </div>
-                        <div style={{ width: '100%', height: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                          <div style={{ width: '100%', maxWidth: '300px', height: '300px' }}>
-                            <Pie data={chartData} options={{
-                              responsive: true,
-                              maintainAspectRatio: false,
-                              plugins: {
-                                legend: {
-                                  position: 'bottom',
-                                  labels: {
-                                    boxWidth: 12,
-                                    font: {
-                                      size: 15,
-                                    },
-                                    padding: 10,
-                                  }
-                                },
-                                tooltip: {
-                                  callbacks: {
-                                    label: function (context) {
-                                      let label = context.label || '';
-                                      if (label) {
-                                        label += ': ';
-                                      }
-                                      if (context.parsed !== undefined) {
-                                        label += context.parsed;
-                                        if (scanOption === 'dynamic') {
-                                          const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                          const percentage = ((context.parsed / total) * 100).toFixed(2);
-                                          label += ` (${percentage}%)`;
-                                        } else {
-                                          label += '%';
-                                        }
-                                      }
-                                      return label;
+                      </div>
+                      <div style={{ width: '100%', height: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <div style={{ width: '100%', maxWidth: '300px', height: '300px' }}>
+                          <Pie data={chartData} options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                              legend: {
+                                position: 'bottom',
+                                labels: {
+                                  boxWidth: 12,
+                                  font: {
+                                    size: 15,
+                                  },
+                                  padding: 10,
+                                }
+                              },
+                              tooltip: {
+                                callbacks: {
+                                  label: function (context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                      label += ': ';
                                     }
+                                    if (context.parsed !== undefined) {
+                                      label += `${context.parsed}%`;
+                                    }
+                                    return label;
                                   }
                                 }
                               }
-                            }} />
-                          </div>
+                            }
+                          }} />
                         </div>
-                      </>
-                    ) : (
-                      <p className="text-gray-400 text-center">Perform scan</p>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-gray-400 text-center">Perform scan</p>
+                  )}
                 </div>
-              </>
+              </div>
             )}
-          </Suspense>
-        </div>
+          </div>
+        )}
+      </Suspense>
+    </div>
       </div>
     </>
 
