@@ -7,9 +7,6 @@ import axios from 'axios';
 
 infinity.register()
 
-// Default values shown
-
-
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const Loading = () => (
@@ -25,8 +22,6 @@ const Loading = () => (
   </div>
 );
 
-
-
 const Overview = () => {
   const [scanOption, setScanOption] = useState('github');
   const [url, setUrl] = useState('');
@@ -34,10 +29,6 @@ const Overview = () => {
   const [scanReportData, setScanReportData] = useState({ keyCounts: {}, keyPercentages: {} });
   const [numFiles, setNumFiles] = useState(0);
   const [repoInfo, setRepoInfo] = useState({
-    Java: 0,
-    Python: 0,
-    HTML: 0,
-    JavaScript: 0,
   });
   const [results, setResults] = useState({});
   const [repoDetails, setRepoDetails] = useState({ owner: '', repo: '' });
@@ -46,15 +37,27 @@ const Overview = () => {
   const [statsData, setStatsData] = useState(null);
   const [scanData, setScanData] = useState(null);
   const { username } = useContext(AuthContext);
-
-  const [host, setHost] = useState('');
-  const [port, setPort] = useState('22');
-  const [logusername, setUsername] = useState('');
-  const [privateKeyPath, setPrivateKeyPath] = useState('');
-  const [logFilePath, setLogFilePath] = useState('');
+  // const [vulnerabilityChartData, setVulnerabilityChartData] = useState({
+  //   labels: [],
+  //   datasets: [{
+  //     data: [],
+  //     backgroundColor: [],
+  //     hoverBackgroundColor: []
+  //   }]
+  // });
+  const [indexing, setIndexing] = useState('');
   const [scanResults, setScanResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [totalPII, setTotalPII] = useState(0);
+  const [chartData, setChartData] = useState({
+    labels: [],
+    datasets: [{
+      data: [],
+      backgroundColor: [],
+      hoverBackgroundColor: []
+    }]
+  });
 
   const generateColors = (count) => {
     const hueStep = 360 / count;
@@ -65,21 +68,7 @@ const Overview = () => {
   };
 
   const [logStats, setLogStats] = useState(null);
-  const [logNumFiles, setLogNumFiles] = useState(0);
-
-  const [chartData, setChartData] = useState(() => {
-    const initialColors = generateColors(4);
-    return {
-      labels: [],
-      datasets: [
-        {
-          data: [],
-          backgroundColor: [],
-          hoverBackgroundColor: []
-        }
-      ]
-    };
-  });
+  const [logNumFiles, setLogNumFiles] = useState(0); 
 
   const debounceTimeouts = useRef({});
 
@@ -123,43 +112,84 @@ const Overview = () => {
     }
   };
 
+  const handleKeyValuePairChangeSplunk = (index, keyOrValue, newValue) => {
+    const updatedKeyValuePairs = [...keyValuePairs];
+    updatedKeyValuePairs[index] = {
+      ...updatedKeyValuePairs[index],
+      [keyOrValue]: newValue
+    };
+    setKeyValuePairs(updatedKeyValuePairs);
+
+    if (keyOrValue === 'key') {
+      if (debounceTimeouts.current[index]) {
+        clearTimeout(debounceTimeouts.current[index]);
+      }
+      debounceTimeouts.current[index] = setTimeout(async () => {
+        if (newValue !== '') {
+          try {
+            const response = await fetch('http://localhost:3000/regexValue-splunk', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ data: newValue })
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to fetch data');
+            }
+
+            const data = await response.json();
+
+            const updatedPairs = [...keyValuePairs];
+            updatedPairs[index] = { ...updatedPairs[index], key: newValue, value: data };
+            setKeyValuePairs(updatedPairs);
+          } catch (error) {
+            console.error('API Error:', error);
+          }
+        }
+      }, 1000);
+    }
+  };
+
+  
+  const [aiMessage, setAiMessage] = useState('');
+
+  // for normal static scans
   const handleAiMessageChange = (e) => {
     const newValue = e.target.value;
     setAiMessage(newValue);
-
+  
     if (debounceTimeouts.current.aiMessage) {
       clearTimeout(debounceTimeouts.current.aiMessage);
     }
-
+  
     debounceTimeouts.current.aiMessage = setTimeout(async () => {
       if (newValue !== '') {
         try {
-          const response = await fetch('http://localhost:3000/gemini-chat', {
+          const response = await fetch('http://localhost:3000/mistral-chat', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ message: newValue }),
           });
-
+  
           if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.details || 'Failed to get response from Gemini');
+            throw new Error(errorData.details || 'Failed to get response from AI chat');
           }
-
+  
           const data = await response.json();
-
-          try {
-            const cleanedPiiData = data.pii.replace(/```json\n|\n```/g, '');
-            const piiData = JSON.parse(cleanedPiiData);
-            const updatedKeyValuePairs = Object.entries(piiData).map(([key, value]) => ({
+  
+          if (typeof data.pii === 'object' && data.pii !== null) {
+            const updatedKeyValuePairs = Object.entries(data.pii).map(([key, value]) => ({
               key,
-              value: "\\b" + value.replace(/^\^|\$$/g, '').replace(/`/g, '') + "\\b"
+              value: value.replace(/^\^|\$$/g, '')
             }));
             setKeyValuePairs(updatedKeyValuePairs);
-          } catch (parseError) {
-            console.error('Error parsing PII data:', parseError);
-            console.error('Raw PII data:', data.pii);
+          } else {
+            console.error('Unexpected PII data format:', data.pii);
           }
         } catch (error) {
           console.error('Error in AI chat:', error);
@@ -167,6 +197,81 @@ const Overview = () => {
       }
     }, 1000);
   };
+
+  // for dynamic scans splunk based.
+  const handleAiMessageChangeSplunk = (e) => {
+    const newValue = e.target.value;
+    setAiMessage(newValue);
+  
+    if (debounceTimeouts.current.aiMessage) {
+      clearTimeout(debounceTimeouts.current.aiMessage);
+    }
+  
+    debounceTimeouts.current.aiMessage = setTimeout(async () => {
+      if (newValue !== '') {
+        try {
+          const response = await fetch('http://localhost:3000/mistral-chat-splunk', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: newValue }),
+          });
+  
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.details || 'Failed to get response from AI chat');
+          }
+  
+          const data = await response.json();
+  
+          if (typeof data.pii === 'object' && data.pii !== null) {
+            const updatedKeyValuePairs = Object.entries(data.pii).map(([key, value]) => ({
+              key,
+              value: value.replace(/^\^|\$$/g, '')
+            }));
+            setKeyValuePairs(updatedKeyValuePairs);
+          } else {
+            console.error('Unexpected PII data format:', data.pii);
+          }
+        } catch (error) {
+          console.error('Error in AI chat:', error);
+        }
+      }
+    }, 1000);
+  };
+
+  useEffect(() => {
+    if (scanOption === 'dynamic' && statsData) {
+      const logLevels = ['info', 'warn', 'error', 'debug'];
+      const data = logLevels.map(level => statsData[`${level}Count`] || 0);
+      const colors = generateColors(logLevels.length);
+  
+      setChartData({
+        labels: logLevels.map(level => level.charAt(0).toUpperCase() + level.slice(1)),
+        datasets: [{
+          data: data,
+          backgroundColor: colors,
+          hoverBackgroundColor: colors
+        }]
+      });
+    } else if (Object.values(repoInfo).length > 0) {
+      const topLanguages = Object.entries(repoInfo)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10);
+  
+      const colors = generateColors(topLanguages.length);
+  
+      setChartData({
+        labels: topLanguages.map(([lang]) => lang),
+        datasets: [{
+          data: topLanguages.map(([, value]) => value),
+          backgroundColor: colors,
+          hoverBackgroundColor: colors
+        }]
+      });
+    }
+  }, [scanOption, repoInfo, statsData]);
 
   useEffect(() => {
 
@@ -207,28 +312,6 @@ const Overview = () => {
     };
 
     fetchScanReportData();
-  }, []);
-
-  useEffect(() => {
-    async function fetchLogStats() {
-      try {
-        const response = await axios.post('/dynamic-log-stats', {
-          host: 'your.remote.server',
-          port: 22,
-          logusername: 'your-username',
-          privateKeyPath: '/path/to/your/private-key',
-          logFilePath: '/path/to/remote/logfile.log'
-        });
-        const data = response.data;
-
-        setLogStats(data);
-        setLogNumFiles(data.totalLines);
-      } catch (error) {
-        console.error('Failed to fetch log statistics:', error);
-      }
-    }
-
-    fetchLogStats();
   }, []);
 
   const handleScanClick = async () => {
@@ -323,7 +406,7 @@ const Overview = () => {
 
         setStatsData(statsData);
         setScanData(scanData);
-        setRepoInfo(statsData);
+        // setRepoInfo(statsData);
 
         const processedResults = Object.entries(scanData).reduce((acc, [piiType, files]) => {
           Object.entries(files).forEach(([filePath, piiInstances]) => {
@@ -363,68 +446,71 @@ const Overview = () => {
     else if (scanOption === 'dynamic') {
       try {
         setIsLoading(true);
-        console.log('Sending request to /dynamic-log-stats');
-        const statsResponse = await fetch('http://localhost:3000/dynamic-log-stats', {
+        console.log('Sending request to /splunk-search');
+        const scanResponse = await fetch('http://localhost:3000/splunk-search', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            host,
-            port: parseInt(port),
-            logusername,
-            privateKeyPath,
-            logFilePath,
+            index: indexing,
+            fieldRegexPairs: Object.fromEntries(keyValuePairs.map(pair => [pair.key, pair.value]))
           }),
         });
-
-        console.log('Sending request to /scan-remote-log');
-        const scanResponse = await fetch('http://localhost:3000/scan-remote-log', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            host,
-            port: parseInt(port),
-            logusername,
-            privateKeyPath,
-            logFilePath,
-            regexPairs: Object.fromEntries(keyValuePairs.map(pair => [pair.key, pair.value]))
-          }),
-        });
-
-        if (!statsResponse.ok || !scanResponse.ok) {
+        if (!scanResponse.ok) {
           throw new Error('Failed to fetch dynamic log stats or scan data');
         }
-
-        const statsData = await statsResponse.json();
         const scanData = await scanResponse.json();
-
-        setStatsData(statsData);
         setScanData(scanData);
-        setRepoInfo({
-          TotalLines: statsData.totalLines,
+    
+        const processedResults = {};
+        let totalPIICount = 0;
+        scanData.results.forEach(result => {
+          const filePath = result.filePath || result.source;
+          if (!processedResults[filePath]) {
+            processedResults[filePath] = 0;
+          }
+          const piiCount = Object.keys(result).filter(key =>
+            key !== 'filePath' && key !== 'source' && result[key]
+          ).length;
+          processedResults[filePath] += piiCount;
+          totalPIICount += piiCount;
         });
-
-        // Update this part to correctly set the number of vulnerabilities
-        const vulnerabilityCount = Object.values(scanData.vulnerabilities).reduce((sum, instances) => sum + instances.length, 0);
-        const processedResults = {
-          [logFilePath]: vulnerabilityCount
-        };
-
         setResults(processedResults);
-        setNumFiles(statsData.totalLines); // Set to total lines scanned instead of 1
-
-        const colors = generateColors(1);
+        setTotalPII(totalPIICount);
+        setNumFiles(Object.keys(processedResults).length);
+    
+        // Update chart data
+        const chartLabels = Object.keys(processedResults);
+        const chartDataValues = Object.values(processedResults);
+        const colors = generateColors(chartLabels.length);
         setChartData({
-          labels: ['Total Lines'],
+          labels: chartLabels,
           datasets: [{
-            data: [statsData.totalLines],
+            data: chartDataValues,
             backgroundColor: colors,
             hoverBackgroundColor: colors
           }]
         });
+    
+        // Set statsData for dynamic scan
+        setStatsData({
+          totalPII: totalPIICount,
+          numFiles: Object.keys(processedResults).length,
+          results: processedResults,
+          chartData: {
+            labels: chartLabels,
+            datasets: [{
+              data: chartDataValues,
+              backgroundColor: colors,
+              hoverBackgroundColor: colors
+            }]
+          }
+        });
+    
+        console.log('Dynamic scan completed. scanData:', scanData);
+        console.log('Dynamic scan completed. statsData:', statsData);
+    
       } catch (error) {
         console.error('Error during dynamic log scan:', error);
         setError(error.message);
@@ -432,6 +518,89 @@ const Overview = () => {
         setIsLoading(false);
       }
     }
+    // else if (scanOption === 'dynamic') {
+    //   try {
+    //     setIsLoading(true);
+    //     console.log('Sending request to /splunk-search');
+    //     const scanResponse = await fetch('http://localhost:3000/splunk-search',{
+    //       method: 'POST',
+    //       headers: {
+    //         'Content-Type': 'application/json',
+    //       },
+    //       body: JSON.stringify({
+    //         index: indexing,
+    //         fieldRegexPairs: Object.fromEntries(keyValuePairs.map(pair => [pair.key, pair.value]))
+    //       }),
+    //     });
+
+    //     if (!scanResponse.ok) {
+    //       throw new Error('Failed to fetch dynamic log stats or scan data');
+    //     }
+
+    //     const scanData = await scanResponse.json();
+    //     setScanData(scanData);
+
+    //     const processedResults = {};
+    //     let totalPIICount = 0;
+
+    //     // scanData.results.forEach(result => {
+    //     //   const filePath = result.filePath || result.source;
+    //     //   if (!processedResults[filePath]) {
+    //     //     processedResults[filePath] = 0;
+    //     //   }
+          
+    //     //   const piiCount = Object.keys(result).filter(key => 
+    //     //     key !== 'filePath' && key !== 'source' && result[key]
+    //     //   ).length;
+          
+    //     //   processedResults[filePath] += piiCount;
+    //     //   totalPIICount += piiCount;
+
+    //     //   const vulnerabilities = scanData.vulnerabilities;
+    //     // const vulnerabilityLabels = Object.keys(vulnerabilities);
+    //     // const vulnerabilityCounts = Object.values(vulnerabilities).map(v => v.length);
+    //     // const colors = generateColors(vulnerabilityLabels.length);
+
+    //   //   setVulnerabilityChartData({
+    //   //     labels: vulnerabilityLabels,
+    //   //     datasets: [{
+    //   //       data: vulnerabilityCounts,
+    //   //       backgroundColor: colors,
+    //   //       hoverBackgroundColor: colors
+    //   //     }]
+    //   //   });
+    //   // });
+
+    //     // setResults(processedResults);
+    //     // setTotalPII(totalPIICount);
+    //     // setNumFiles(Object.keys(processedResults).length);
+
+    //                                       // Update chart data
+    //                                 //       const chartLabels = Object.keys(processedResults);
+    //                                 //       const chartDataValues = Object.values(processedResults);
+    //                                 //       const colors = generateColors(chartLabels.length);
+
+    //                                 //       setStatsData({
+    //                                 //         totalPII: totalPIICount,
+    //                                 //         numFiles: Object.keys(processedResults).length,
+    //                                 //         results: processedResults,
+    //                                 //         chartData: {
+    //                                 //           labels: chartLabels,
+    //                                 //           datasets: [{
+    //                                 //             data: chartDataValues,
+    //                                 //             backgroundColor: colors,
+    //                                 //             hoverBackgroundColor: colors
+    //                                 //           }]
+    //                                 //         }
+    //                                 //       });
+
+    //   } catch (error) {
+    //     console.error('Error during dynamic log scan:', error);
+    //     setError(error.message);
+    //   } finally {
+    //     setIsLoading(false);
+    //   }
+    // }
   }
 
   const InfoButton = ({ pii }) => {
@@ -458,16 +627,18 @@ const Overview = () => {
     }
 
     if (!statsData || !scanData) {
+      console.error('Stats Data or Scan Data is missing');
       alert('Please perform a scan before generating a report');
       return;
     }
-
+  
     const reportData = {
       scanDetails: scanData,
       stats: statsData,
       logStats: scanOption === 'dynamic' ? statsData : null,
-      vulnerabilities: scanOption === 'dynamic' ? scanData.vulnerabilities : null,
+      vulnerabilities: scanOption === 'dynamic' ? scanData.results : null,
     };
+    console.log('Report Data:', reportData);
 
     try {
       const response = await fetch('http://localhost:3000/createReport', {
@@ -486,7 +657,10 @@ const Overview = () => {
       if (!response.ok) {
         throw new Error('Failed to generate report');
       }
-
+  
+      const result = await response.json();
+      console.log('Report generation response:', result);
+  
       alert('Report generated successfully!');
     } catch (error) {
       console.error('Error generating report:', error);
@@ -516,56 +690,52 @@ const Overview = () => {
     }
   };
 
-  const [aiMessage, setAiMessage] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
+  // const handleAiChat = async () => {
+  //   setIsLoading(true);
+  //   try {
+  //     const response = await fetch('http://localhost:3000/gemini-chat', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({ message: aiMessage }),
+  //     });
 
+  //     if (!response.ok) {
+  //       const errorData = await response.json();
+  //       throw new Error(errorData.details || 'Failed to get response from Gemini');
+  //     }
 
-  const handleAiChat = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:3000/gemini-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: aiMessage }),
-      });
+  //     const data = await response.json();
+  //     setAiResponse(data.pii);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to get response from Gemini');
-      }
+  //     try {
+  //       const cleanedPiiData = data.pii.replace(/```json\n|\n```/g, '');
+  //       const piiData = JSON.parse(cleanedPiiData);
+  //       const updatedKeyValuePairs = Object.entries(piiData).map(([key, value]) => ({
+  //         key,
+  //         value
+  //       }));
+  //       for (let i = 0; i < updatedKeyValuePairs.length; i++) {
+  //         updatedKeyValuePairs[i].value = "\\b" + updatedKeyValuePairs[i].value
+  //           .replace(/^\^|\$$/g, '')
+  //           .replace(/`/g, '')
+  //           + "\\b";
+  //       }
+  //       setKeyValuePairs(updatedKeyValuePairs);
+  //     } catch (parseError) {
+  //       console.error('Error parsing PII data:', parseError);
+  //       console.error('Raw PII data:', data.pii);  // Log the raw data for debugging
+  //       setAiResponse('Received response, but it was not in the expected format. Please try again or modify your input.');
+  //     }
 
-      const data = await response.json();
-      setAiResponse(data.pii);
-
-      try {
-        const cleanedPiiData = data.pii.replace(/```json\n|\n```/g, '');
-        const piiData = JSON.parse(cleanedPiiData);
-        const updatedKeyValuePairs = Object.entries(piiData).map(([key, value]) => ({
-          key,
-          value
-        }));
-        for (let i = 0; i < updatedKeyValuePairs.length; i++) {
-          updatedKeyValuePairs[i].value = "\\b" + updatedKeyValuePairs[i].value
-            .replace(/^\^|\$$/g, '')
-            .replace(/`/g, '')
-            + "\\b";
-        }
-        setKeyValuePairs(updatedKeyValuePairs);
-      } catch (parseError) {
-        console.error('Error parsing PII data:', parseError);
-        console.error('Raw PII data:', data.pii);  // Log the raw data for debugging
-        setAiResponse('Received response, but it was not in the expected format. Please try again or modify your input.');
-      }
-
-    } catch (error) {
-      console.error('Error in AI chat:', error);
-      setAiResponse(`Error: ${error.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //   } catch (error) {
+  //     console.error('Error in AI chat:', error);
+  //     setAiResponse(`Error: ${error.message}`);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
 
 
 
@@ -574,6 +744,7 @@ const Overview = () => {
       <div className="bg-[#121212] text-white min-h-screen p-8 w-full overflow-hidden ">
         <h1 className="text-lg text-[#a4ff9e]">Scanner</h1>
         <h1 className="text-4xl font-bold text-white mb-6">Overview</h1>
+        {/* buttons */}
         <div className="mb-8">
           <div className="flex space-x-4">
             <button
@@ -598,6 +769,7 @@ const Overview = () => {
         </div>
 
         <div className="flex mb-8">
+          {/* inputs */}
           <div className="bg-[#121212] rounded-lg w-[97%] p-6 mx-auto">
             <h2 className="text-xl mb-4 text-grey-300 ">Input Information</h2>
             <input
@@ -625,7 +797,7 @@ const Overview = () => {
                 <div className="flex items-stretch space-x-4">
                   <input
                     type="text"
-                    placeholder="Enter the genre of your project"
+                    placeholder="Describe your project for PII detection"
                     value={aiMessage}
                     onChange={handleAiMessageChange}
                     className="bg-[#282828] text-white rounded-2xl py-3 px-3 w-full focus:outline-none"
@@ -687,14 +859,14 @@ const Overview = () => {
                   className="bg-[#282828] text-white rounded-2xl py-3 px-4 w-full mb-2 focus:outline-none"
                 />
                 <div className="flex items-stretch space-x-4">
-                  <input
-                    type="text"
-                    placeholder="Enter the genre of your project"
-                    value={aiMessage}
-                    onChange={handleAiMessageChange}
-                    className="bg-[#282828] text-white rounded-2xl py-3 px-3 w-full focus:outline-none"
-                  />
-                </div>
+                    <input
+                      type="text"
+                      placeholder="Describe your project for PII detection"
+                      value={aiMessage}
+                      onChange={handleAiMessageChange}
+                      className="bg-[#282828] text-white rounded-2xl py-3 px-3 w-full focus:outline-none"
+                    />
+                  </div>
                 {keyValuePairs.map((pair, index) => (
                   <div className="flex flex-col space-y-2 mb-4" key={index}>
                     <div className="flex space-x-2">
@@ -746,38 +918,18 @@ const Overview = () => {
               <div className="space-y-4">
                 <input
                   type="text"
-                  placeholder="Enter host"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="Enter index"
+                  value={indexing}
+                  onChange={(e) => setIndexing(e.target.value)}
                   className="bg-[#282828] text-white rounded-2xl py-3 px-4 w-full mb-2 focus:outline-none"
                 />
-                <input
-                  type="text"
-                  placeholder="Enter username"
-                  value={logusername}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="bg-[#282828] text-white rounded-2xl py-3 px-4 w-full mb-2 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Enter private key path"
-                  value={privateKeyPath}
-                  onChange={(e) => setPrivateKeyPath(e.target.value)}
-                  className="bg-[#282828] text-white rounded-2xl py-3 px-4 w-full mb-2 focus:outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Enter log file path"
-                  value={logFilePath}
-                  onChange={(e) => setLogFilePath(e.target.value)}
-                  className="bg-[#282828] text-white rounded-2xl py-3 px-4 w-full mb-2 focus:outline-none"
-                />
+                
                 <div className="flex items-stretch space-x-4">
                   <input
                     type="text"
-                    placeholder="Enter the genre of your project"
+                    placeholder="Describe your project for PII detection"
                     value={aiMessage}
-                    onChange={handleAiMessageChange}
+                    onChange={handleAiMessageChangeSplunk}
                     className="bg-[#282828] text-white rounded-2xl py-3 px-3 w-full focus:outline-none"
                   />
                 </div>
@@ -789,7 +941,7 @@ const Overview = () => {
                         type="text"
                         placeholder="Key"
                         value={pair.key}
-                        onChange={(e) => handleKeyValuePairChange(index, 'key', e.target.value)}
+                        onChange={(e) => handleKeyValuePairChangeSplunk(index, 'key', e.target.value)}
                         className="bg-[#282828] text-white rounded-2xl py-4 px-4 flex-1 focus:outline-none"
                       />
                       <input
@@ -843,11 +995,12 @@ const Overview = () => {
                   <h2 className="text-xl mb-4 text-gray-300">
                     {scanOption === 'dynamic' ? 'Log Analysis Results' : 'Results'}
                   </h2>
-                  <p className="mb-2">
+                  {/* <h2 className="text-xl mb-4 text-gray-300">Log Analysis Results</h2> */}
+                  {/* <p className="mb-2">
                     {scanOption === 'dynamic'
                       ? `Total Lines Analyzed: ${numFiles}`
                       : `Number of Files with PIIs found - ${numFiles}`}
-                  </p>
+                  </p> */}
                   <div className="flex-grow overflow-x-auto scrollbar-thin">
                     <table className="min-w-full bg-[#2C2D2F] border-collapse border-gray-600 shadow-md rounded-lg overflow-hidden">
                       <thead className="bg-[#2C2D2F] text-gray-300">
